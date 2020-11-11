@@ -23,6 +23,13 @@ import time
 from threading import Thread
 import importlib.util
 
+#Sesor de proximidad
+import board
+import busio
+import adafruit_vl53l0x
+i2c = busio.I2C(board.SCL,board.SDA)
+vl53 = adafruit_vl53l0x.VL53L0X(i2c)
+
 # Define VideoStream class to handle streaming of video from webcam in separate processing thread
 # Source - Adrian Rosebrock, PyImageSearch: https://www.pyimagesearch.com/2015/12/28/increasing-raspberry-pi-fps-with-python-and-opencv/
 class VideoStream:
@@ -188,31 +195,42 @@ while True:
     #num = interpreter.get_tensor(output_details[3]['index'])[0]  # Total number of detected objects (inaccurate and not needed)
 
     # Loop over all detections and draw detection box if confidence is above minimum threshold
-    for i in range(len(scores)):
-        if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
+    
+    numero= int(format(vl53.range))
+    if numero < 1000:
+        blur_frame = cv2.blur(frame,ksize=(50,50))
+        
+        for i in range(len(scores)):
+            if ((scores[i] > min_conf_threshold) and (scores[i] <= 1.0)):
 
-            # Get bounding box coordinates and draw box
-            # Interpreter can return coordinates that are outside of image dimensions, need to force them to be within image using max() and min()
-            ymin = int(max(1,(boxes[i][0] * imH)))
-            xmin = int(max(1,(boxes[i][1] * imW)))
-            ymax = int(min(imH,(boxes[i][2] * imH)))
-            xmax = int(min(imW,(boxes[i][3] * imW)))
-            
-            cv2.rectangle(frame, (xmin,ymin), (xmax,ymax), (10, 255, 0), 2)
+                # Get bounding box coordinates and draw box
+                # Interpreter can return coordinates that are outside of image dimensions, need to force them to be within image using max() and min()
+                ymin = int(max(1,(boxes[i][0] * imH)))
+                xmin = int(max(1,(boxes[i][1] * imW)))
+                ymax = int(min(imH,(boxes[i][2] * imH)))
+                xmax = int(min(imW,(boxes[i][3] * imW)))
+                
+                
+                object = frame[ymax:ymax+ymin,xmax=xmax+xmin]
+                blur_frame = cv2.blur(frame,ksize=(7,7))
+                blur_frame[ymax:ymax+ymin,xmax=xmax+xmin] = object
+                
+                cv2.rectangle(blur_frame, (xmin,ymin), (xmax,ymax), (10, 255, 0), 2)
 
-            # Draw label
-            object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
-            label = '%s: %d%%' % (object_name, int(scores[i]*100)) # Example: 'person: 72%'
-            labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
-            label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
-            cv2.rectangle(frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
-            cv2.putText(frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw label text
+                # Draw label
+                object_name = labels[int(classes[i])] # Look up object name from "labels" array using class index
+                label = '%s: %d%%' % (object_name, int(scores[i]*100)) # Example: 'person: 72%'
+                labelSize, baseLine = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2) # Get font size
+                label_ymin = max(ymin, labelSize[1] + 10) # Make sure not to draw label too close to top of window
+                cv2.rectangle(blur_frame, (xmin, label_ymin-labelSize[1]-10), (xmin+labelSize[0], label_ymin+baseLine-10), (255, 255, 255), cv2.FILLED) # Draw white box to put label text in
+                cv2.putText(blur_frame, label, (xmin, label_ymin-7), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 2) # Draw label text
 
     # Draw framerate in corner of frame
-    cv2.putText(frame,'FPS: {0:.2f}'.format(frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA)
+    cv2.putText(blur_frame,'FPS: {0:.2f}'.format(frame_rate_calc),(30,50),cv2.FONT_HERSHEY_SIMPLEX,1,(255,255,0),2,cv2.LINE_AA)
 
     # All the results have been drawn on the frame, so it's time to display it.
-    cv2.imshow('Object detector', frame)
+    edged = cv2.Canny(blur_frame,30,200)
+    cv2.imshow('Object detector', blur_frame)
 
     # Calculate framerate
     t2 = cv2.getTickCount()
